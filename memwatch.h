@@ -540,6 +540,8 @@ void* mwCalloc_( size_t, size_t );
 void  mwFree( void*, const char*, int );
 void  mwFree_( void* );
 char* mwStrdup( const char *, const char*, int );
+void* mwZMalloc( size_t, const char*, int );
+
 
 /*
 ** Enable/disable precompiler block
@@ -585,6 +587,8 @@ char* mwStrdup( const char *, const char*, int );
 #define CHECK_BUFFER(b) mwTestBuffer(__FILE__,__LINE__,b)
 #define MARK(p)         mwMark(p,#p,__FILE__,__LINE__)
 #define UNMARK(p)       mwUnmark(p,__FILE__,__LINE__)
+
+#define os_zalloc(n)       mwZMalloc(n, __FILE__,__LINE__)
 
 #else /* MEMWATCH */
 

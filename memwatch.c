@@ -136,7 +136,7 @@
 ***********************************************************************/
 
 /*lint -save -e767 */
-#define VERSION     "2.71"         /* the current version number */
+#define VVERSION     "2.71"         /* the current version number */
 #define CHKVAL(mw)  (0xFE0180L^(long)mw->count^(long)mw->size^(long)mw->line)
 #define FLUSH()     mwFlush()
 #define TESTS(f,l)  if(mwTestAlways) (void)mwTestNow(f,l,1)
@@ -168,8 +168,8 @@
 #ifdef MW_HAVE_MUTEX
 #define MW_MUTEX_INIT()		mwMutexInit()
 #define MW_MUTEX_TERM()		mwMutexTerm()
-#define MW_MUTEX_LOCK()		mwMutexLock()
-#define MW_MUTEX_UNLOCK()	mwMutexUnlock()
+#define MW_MUTEX_LOCK()		mwMutexLock(__FILE__,__LINE__)
+#define MW_MUTEX_UNLOCK()	mwMutexUnlock(__FILE__,__LINE__)
 #else
 #define MW_MUTEX_INIT()
 #define MW_MUTEX_TERM()
@@ -402,8 +402,8 @@ static char		mwDummy( char c );
 #ifdef MW_HAVE_MUTEX
 static void		mwMutexInit( void );
 static void		mwMutexTerm( void );
-static void		mwMutexLock( void );
-static void		mwMutexUnlock( void );
+static void		mwMutexLock(const char* file, int line );
+static void		mwMutexUnlock( const char* file, int line );
 #endif
 
 /***********************************************************************
@@ -451,7 +451,7 @@ void mwInit( void ) {
         (void) time( &tid );
         mwWrite(
             "\n============="
-            " MEMWATCH " VERSION " Copyright (C) 1992-1999 Johan Lindh "
+            " MEMWATCH " VVERSION " Copyright (C) 1992-1999 Johan Lindh "
             "=============\n");
         mwWrite( "\nStarted at %s\n", ctime( &tid ) );
 
@@ -944,6 +944,15 @@ void* mwMalloc( size_t size, const char* file, int line) {
     return p;
     }
 
+void* mwZMalloc( size_t size, const char* file, int line)
+{
+    void *p = mwMalloc(size, file, line);
+	if (p)
+		memset(p, 0, size);
+    return p;
+}
+
+
 void* mwRealloc( void *p, size_t size, const char* file, int line) {
     int oldUseLimit, i;
     mwData *mw;
@@ -954,7 +963,7 @@ void* mwRealloc( void *p, size_t size, const char* file, int line) {
     if( p == NULL ) return mwMalloc( size, file, line );
     if( size == 0 ) { mwFree( p, file, line ); return NULL; }
 
-	MW_MUTEX_LOCK();
+	//MW_MUTEX_LOCK();
 
     /* do the quick ownership test */
     mw = (mwData*) mwBUFFER_TO_MW( p );
@@ -980,7 +989,7 @@ void* mwRealloc( void *p, size_t size, const char* file, int line) {
                 mwCounter, file, line, (unsigned long)size - mw->size, mwAllocLimit - mwStatCurAlloc );
             mwIncErr();
             FLUSH();
-			MW_MUTEX_UNLOCK();
+			//MW_MUTEX_UNLOCK();
             return NULL;
             }
 
@@ -996,7 +1005,7 @@ void* mwRealloc( void *p, size_t size, const char* file, int line) {
             mwFree( p, file, line );
             }
         mwUseLimit = oldUseLimit;
-		MW_MUTEX_UNLOCK();
+		//MW_MUTEX_UNLOCK();
         return (void*) ptr;
         }
 
@@ -1012,7 +1021,7 @@ check_dbl_free:
                 mwCounter, file, line, p,
                 mwLFfile[i], mwLFline[i] );
             FLUSH();
-			MW_MUTEX_UNLOCK();
+			//MW_MUTEX_UNLOCK();
             return NULL;
             }
         }
@@ -1022,7 +1031,7 @@ check_dbl_free:
     mwWrite( "realloc: <%ld> %s(%d), unknown pointer %p\n",
         mwCounter, file, line, p );
     FLUSH();
-	MW_MUTEX_UNLOCK();
+	//MW_MUTEX_UNLOCK();
     return NULL;
     }
 
@@ -1030,21 +1039,21 @@ char *mwStrdup( const char* str, const char* file, int line ) {
     size_t len;
     char *newstring;
 
-	MW_MUTEX_LOCK();
+	//MW_MUTEX_LOCK();
 
     if( str == NULL ) {
         mwIncErr();
         mwWrite( "strdup: <%ld> %s(%d), strdup(NULL) called\n",
             mwCounter, file, line );
         FLUSH();
-		MW_MUTEX_UNLOCK();
+		//MW_MUTEX_UNLOCK();
         return NULL;
         }
 
     len = strlen( str ) + 1;
     newstring = (char*) mwMalloc( len, file, line );
     if( newstring != NULL ) memcpy( newstring, str, len );
-	MW_MUTEX_UNLOCK();
+	//MW_MUTEX_UNLOCK();
     return newstring;
     }
 
@@ -1749,7 +1758,7 @@ static int mwRelink( mwData* mw, const char* file, int line ) {
 			if( mw1->next )
 			{
 				if( !mwIsReadAddr(mw1->next,mwDataSize) ||
-					!mw1->next->check != CHKVAL(mw1) ||
+					!(mw1->next->check != CHKVAL(mw1)) ||
 					mw1->next->prev != mw1 )
 				{
 					mwWrite("relink: forward chain's last intact MW is MW-%p, %ld %sbytes at %s(%d)\n",
@@ -1791,7 +1800,7 @@ scan_reverse:
             if( mw2->prev )
 			{
 				if( !mwIsReadAddr(mw2->prev,mwDataSize) ||
-					!mw2->prev->check != CHKVAL(mw2) ||
+					!(mw2->prev->check != CHKVAL(mw2)) ||
 					mw2->prev->next != mw2 )
 				{
 					mwWrite("relink: reverse chain's last intact MW is MW-%p, %ld %sbytes at %s(%d)\n",
@@ -2551,14 +2560,16 @@ static void	mwMutexTerm( void )
 	return;
 }
 
-static void	mwMutexLock( void )
+static void	mwMutexLock( const char* file, int line )
 {
+    //printf("lock, %s, %d\n", file, line);
 	pthread_mutex_lock(&mwGlobalMutex);
 	return;
 }
 
-static void	mwMutexUnlock( void )
+static void	mwMutexUnlock( const char* file, int line )
 {
+    //printf("unlock, %s, %d\n", file, line);
 	pthread_mutex_unlock(&mwGlobalMutex);
 	return;
 }
